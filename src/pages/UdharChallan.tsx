@@ -267,6 +267,7 @@ interface ChallanDetailsStepProps {
   setVehicleRent: (val: string) => void;
   deposit: string;
   setDeposit: (val: string) => void;
+  stockData: StockData[];
 }
 
 const ChallanDetailsStep: React.FC<ChallanDetailsStepProps> = ({
@@ -302,6 +303,7 @@ const ChallanDetailsStep: React.FC<ChallanDetailsStepProps> = ({
   loadingUnloadingCharges,
   setLoadingUnloadingCharges,
   vehicleRent,
+  setVehicleRent,
   deposit,
   setDeposit
 }) => {
@@ -570,6 +572,7 @@ const ChallanDetailsStep: React.FC<ChallanDetailsStepProps> = ({
             showExtraPortion={showExtraPortion}
             stockData={stockData}
             showAvailable={true}
+            enableItemSearch={true}
           />
         </div>
 
@@ -727,7 +730,6 @@ const ChallanDetailsStep: React.FC<ChallanDetailsStepProps> = ({
 };
 
 const UdharChallan: React.FC = () => {
-  const navigate = useNavigate();
   const location = useLocation();
   const { t, language } = useLanguage();
   const { sizes: rawPlateSizes } = usePlateSizes();

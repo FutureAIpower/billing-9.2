@@ -1,7 +1,7 @@
 import React from "react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { usePlateSizes } from "../hooks/usePlateSizes";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
 import { useSettings } from "../contexts/SettingsContext";
 
 export interface PlateSize {
@@ -76,6 +76,7 @@ interface ItemsTableProps {
   showAvailable?: boolean;
   showLost?: boolean;
   showExtraPortion?: boolean;
+  enableItemSearch?: boolean;
 }
 
 const ItemsTable: React.FC<ItemsTableProps> = ({
@@ -91,20 +92,12 @@ const ItemsTable: React.FC<ItemsTableProps> = ({
   showAvailable = false,
   showLost = false,
   showExtraPortion = false,
+  enableItemSearch = false,
 }) => {
   const { t, language } = useLanguage();
   const { sizes: hookPlateSizes } = usePlateSizes();
   const { activeCategory: globalActiveCategory, enableCategorySeparation, jackMaterialType } = useSettings();
   const isJackIron = (ps: PlateSize) => ps.category === 'jack' && jackMaterialType === 'iron';
-  // A negative outstanding balance means the client has returned more of
-  // this portion than they were on record for — that surplus is an
-  // automatically-remembered credit (see JamaChallan's handleSave), so it
-  // is shown distinctly instead of as a plain (misleading) negative debt.
-  const formatPortionBalance = (value: number) => {
-    if (value < 0) return { text: `+${Math.abs(value)} ${t('credit') || 'credit'}`, className: 'bg-emerald-50 text-emerald-700' };
-    if (value === 0) return { text: '0', className: 'bg-gray-100 text-gray-600' };
-    return { text: String(value), className: 'bg-red-50 text-red-700' };
-  };
   const plateSizes = React.useMemo(() => {
     const rawSizes = propPlateSizes || hookPlateSizes || [];
     if (!enableCategorySeparation) return rawSizes;
@@ -126,17 +119,6 @@ const ItemsTable: React.FC<ItemsTableProps> = ({
     cuplock: false,
     other: false,
   });
-
-  // Find which category currently has items with qty > 0 or borrowed > 0
-  const activeCategory = React.useMemo(() => {
-    for (const ps of plateSizes) {
-      const item = items.items[ps.id];
-      if (item && ((item.qty || 0) > 0 || (item.borrowed || 0) > 0 || (item.lost || 0) > 0 || (item.damaged || 0) > 0)) {
-        return ps.category || 'shuttering';
-      }
-    }
-    return null;
-  }, [items, plateSizes]);
 
   React.useEffect(() => {
     if (enableCategorySeparation) {
@@ -176,6 +158,116 @@ const ItemsTable: React.FC<ItemsTableProps> = ({
       ...prev,
       [section]: !prev[section]
     }));
+  };
+
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [filterMode, setFilterMode] = React.useState<'all' | 'entered'>('all');
+
+  const isSearchEligible = React.useMemo(() => {
+    if (!enableItemSearch) return false;
+    if (enableCategorySeparation) {
+      const cat = globalActiveCategory || 'shuttering';
+      return cat === 'jack' || cat === 'cuplock';
+    }
+    return plateSizes.some(ps => ps.category === 'jack' || ps.category === 'cuplock');
+  }, [enableItemSearch, enableCategorySeparation, globalActiveCategory, plateSizes]);
+
+  const enteredItemsCount = React.useMemo(() => {
+    return plateSizes.filter(ps => {
+      if (!enableCategorySeparation && ps.category !== 'jack' && ps.category !== 'cuplock') {
+        return false;
+      }
+      const item = items.items[ps.id];
+      return item && ((item.qty || 0) > 0 || (item.borrowed || 0) > 0 || (item.extraQty || 0) > 0);
+    }).length;
+  }, [plateSizes, items.items, enableCategorySeparation]);
+
+  const normalizeSearchText = (text: string) => {
+    const gujDigits = ['૦','૧','૨','૩','૪','૫','૬','૭','૮','૯'];
+    return text
+      .toLowerCase()
+      .replace(/[૦-૯]/g, d => String(gujDigits.indexOf(d)))
+      .trim();
+  };
+
+  const matchesSearch = React.useCallback((ps: PlateSize) => {
+    if (!isSearchEligible) return true;
+
+    if (filterMode === 'entered') {
+      const item = items.items[ps.id];
+      const hasQty = item && ((item.qty || 0) > 0 || (item.borrowed || 0) > 0 || (item.extraQty || 0) > 0);
+      if (!hasQty) return false;
+    }
+
+    if (ps.category !== 'jack' && ps.category !== 'cuplock') {
+      return !searchQuery.trim();
+    }
+
+    if (!searchQuery.trim()) return true;
+
+    const normalizedQuery = normalizeSearchText(searchQuery);
+    const normalizedName = normalizeSearchText(ps.name || '');
+    const terms = normalizedQuery.split(/\s+/).filter(Boolean);
+    return terms.every(term => normalizedName.includes(term));
+  }, [isSearchEligible, searchQuery, filterMode, items.items]);
+
+  React.useEffect(() => {
+    if (searchQuery.trim() && !enableCategorySeparation) {
+      setCollapsedSections(prev => ({
+        ...prev,
+        jack: false,
+        cuplock: false,
+      }));
+    }
+  }, [searchQuery, enableCategorySeparation]);
+
+  const searchBarRef = React.useRef<HTMLDivElement>(null);
+
+  const visibleItemsCount = React.useMemo(() => {
+    if (!isSearchEligible) return plateSizes.length;
+    if (enableCategorySeparation) {
+      return plateSizes.filter(matchesSearch).length;
+    }
+    return plateSizes.filter(ps => ps.category === 'jack' || ps.category === 'cuplock').filter(matchesSearch).length;
+  }, [isSearchEligible, enableCategorySeparation, plateSizes, matchesSearch]);
+
+  const scrollToSearchTop = React.useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const isMobile = window.innerWidth < 1024;
+    if (!isMobile || !searchBarRef.current) return;
+
+    setTimeout(() => {
+      if (!searchBarRef.current) return;
+      const rect = searchBarRef.current.getBoundingClientRect();
+      const headerOffset = 64; // 56px fixed header + 8px margin
+      const currentScroll = window.pageYOffset || document.documentElement.scrollTop;
+      if (Math.abs(rect.top - headerOffset) > 10) {
+        window.scrollTo({
+          top: Math.max(0, currentScroll + rect.top - headerOffset),
+          behavior: 'smooth'
+        });
+      }
+    }, 100);
+  }, []);
+
+  React.useEffect(() => {
+    if (searchQuery.trim() && typeof window !== 'undefined' && window.innerWidth < 1024) {
+      scrollToSearchTop();
+    }
+  }, [searchQuery, scrollToSearchTop]);
+
+  const getSearchPlaceholder = () => {
+    if (enableCategorySeparation) {
+      if (globalActiveCategory === 'jack') {
+        return jackMaterialType === 'wooden'
+          ? (language === 'gu' ? 'ટેકા શોધો... (દા.ત. 12, 14, પ્લાઇ)' : 'Search Teka (e.g. 12, 14, Ply)...')
+          : (language === 'gu' ? 'જેક શોધો... (દા.ત. 12, 14, પ્લાઇ)' : 'Search Jack (e.g. 12, 14, Ply)...');
+      }
+      if (globalActiveCategory === 'cuplock') {
+        return language === 'gu' ? 'કપલોક આઈટમ શોધો...' : 'Search Cuplock items...';
+      }
+    }
+    return language === 'gu' ? 'જેક / કપલોક આઈટમ શોધો... (દા.ત. 12, 14)' : 'Search Jack / Cuplock items...';
   };
 
 
@@ -590,6 +682,103 @@ const ItemsTable: React.FC<ItemsTableProps> = ({
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      {/* Item Search Bar for Jack & Cuplock in Udhar Challan */}
+      {isSearchEligible && (
+        <div
+          ref={searchBarRef}
+          className="sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] lg:static z-30 p-2.5 sm:p-3 bg-white/95 backdrop-blur-md border border-blue-200/80 rounded-xl space-y-2 shadow-sm transition-all"
+        >
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute text-blue-500 transform -translate-y-1/2 left-3 top-1/2 w-4 h-4" />
+              <input
+                type="text"
+                value={searchQuery}
+                onFocus={scrollToSearchTop}
+                onClick={scrollToSearchTop}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  if (e.target.value) {
+                    scrollToSearchTop();
+                  }
+                }}
+                placeholder={getSearchPlaceholder()}
+                className="w-full pl-9 pr-9 py-2 text-xs sm:text-sm bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400 shadow-xs transition-all"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute transform -translate-y-1/2 right-2.5 top-1/2 p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
+                  title={language === 'gu' ? 'સાફ કરો' : 'Clear'}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Quick Filter: All vs Entered */}
+            <div className="inline-flex rounded-lg border border-gray-300 p-0.5 bg-white text-xs shadow-xs flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setFilterMode('all')}
+                className={`px-2.5 py-1.5 rounded-md font-semibold transition-colors ${
+                  filterMode === 'all'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {language === 'gu' ? 'બધા' : 'All'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterMode('entered')}
+                className={`px-2.5 py-1.5 rounded-md font-semibold transition-colors flex items-center gap-1.5 ${
+                  filterMode === 'entered'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <span>{language === 'gu' ? 'ભરેલ' : 'Entered'}</span>
+                {enteredItemsCount > 0 && (
+                  <span className={`px-1.5 py-0.2 text-[10px] rounded-full font-bold leading-tight ${
+                    filterMode === 'entered'
+                      ? 'bg-white text-blue-700'
+                      : 'bg-blue-100 text-blue-800'
+                  }`}>
+                    {enteredItemsCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Search Result Info when search is active */}
+          {searchQuery && (
+            <div className="flex items-center justify-between text-[11px] sm:text-xs bg-blue-50/90 px-2.5 py-1.5 rounded-lg border border-blue-100">
+              <div className="flex items-center gap-1.5 truncate">
+                <Search className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <span className="text-gray-700">
+                  {language === 'gu' ? 'શોધેલ:' : 'Searched:'}{' '}
+                  <strong className="text-blue-700 font-bold">"{searchQuery}"</strong>
+                </span>
+                <span className="text-gray-400">|</span>
+                <span className="text-gray-600 font-semibold">
+                  {visibleItemsCount} {language === 'gu' ? 'આઈટમ' : 'items'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="text-blue-600 hover:text-blue-800 hover:underline font-bold text-xs shrink-0 ml-2"
+              >
+                {language === 'gu' ? 'સાફ કરો' : 'Clear'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Desktop Table */}
       <div className="hidden overflow-x-auto lg:block">
         <table className="min-w-full divide-y divide-gray-200">
@@ -664,7 +853,7 @@ const ItemsTable: React.FC<ItemsTableProps> = ({
                   </td>
                 </tr>
                 )}
-                {(!enableCategorySeparation ? !collapsedSections.shuttering : true) && plateSizes.filter(ps => (ps.category || 'shuttering') === 'shuttering').map(renderDesktopRow)}
+                {(!enableCategorySeparation ? !collapsedSections.shuttering : true) && plateSizes.filter(ps => (ps.category || 'shuttering') === 'shuttering').filter(matchesSearch).map(renderDesktopRow)}
               </>
             )}
 
@@ -688,7 +877,19 @@ const ItemsTable: React.FC<ItemsTableProps> = ({
                   </td>
                 </tr>
                 )}
-                {(!enableCategorySeparation ? !collapsedSections.jack : true) && plateSizes.filter(ps => ps.category === 'jack').map(renderDesktopRow)}
+                {(!enableCategorySeparation ? !collapsedSections.jack : true) && (() => {
+                  const jackSizes = plateSizes.filter(ps => ps.category === 'jack').filter(matchesSearch);
+                  if (jackSizes.length === 0 && (searchQuery.trim() || filterMode === 'entered')) {
+                    return (
+                      <tr>
+                        <td colSpan={10} className="px-4 py-8 text-center text-xs sm:text-sm text-gray-500 bg-gray-50">
+                          <p className="font-medium">{language === 'gu' ? 'કોઈ જેક/ટેકા મળ્યા નથી' : 'No matching Jack / Teka items'}</p>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return jackSizes.map(renderDesktopRow);
+                })()}
               </>
             )}
 
@@ -712,7 +913,19 @@ const ItemsTable: React.FC<ItemsTableProps> = ({
                   </td>
                 </tr>
                 )}
-                {(!enableCategorySeparation ? !collapsedSections.cuplock : true) && plateSizes.filter(ps => ps.category === 'cuplock').map(renderDesktopRow)}
+                {(!enableCategorySeparation ? !collapsedSections.cuplock : true) && (() => {
+                  const cuplockSizes = plateSizes.filter(ps => ps.category === 'cuplock').filter(matchesSearch);
+                  if (cuplockSizes.length === 0 && (searchQuery.trim() || filterMode === 'entered')) {
+                    return (
+                      <tr>
+                        <td colSpan={10} className="px-4 py-8 text-center text-xs sm:text-sm text-gray-500 bg-gray-50">
+                          <p className="font-medium">{language === 'gu' ? 'કોઈ કપલોક આઈટમ મળી નથી' : 'No matching Cuplock items'}</p>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return cuplockSizes.map(renderDesktopRow);
+                })()}
               </>
             )}
 
@@ -736,10 +949,50 @@ const ItemsTable: React.FC<ItemsTableProps> = ({
                   </td>
                 </tr>
                 )}
-                {(!enableCategorySeparation ? !collapsedSections.other : true) && plateSizes.filter(ps => ps.category === 'other').map(renderDesktopRow)}
+                {(!enableCategorySeparation ? !collapsedSections.other : true) && plateSizes.filter(ps => ps.category === 'other').filter(matchesSearch).map(renderDesktopRow)}
               </>
             )}
           </tbody>
+          <tfoot className="bg-gray-100 border-t-2 border-gray-300">
+            <tr>
+              <td className="px-4 py-3 text-xs sm:text-sm font-bold text-center text-gray-900">
+                {language === 'gu' ? 'કુલ' : 'Total'}
+              </td>
+              {outstandingBalances && <td className="px-4 py-3 text-center">-</td>}
+              {showAvailable && <td className="px-4 py-3 text-center">-</td>}
+              <td className="px-4 py-3 text-xs sm:text-sm font-bold text-center">
+                <div className="px-3 py-1.5 bg-blue-100 rounded-lg text-blue-800 inline-block font-bold">
+                  {Object.values(items.items || {}).reduce((sum, item) => sum + (item.qty || 0) + (item.borrowed || 0), 0)} {language === 'gu' ? 'કુલ' : 'Total'}
+                </div>
+              </td>
+              {isExtraPortionVisible && <td className="px-4 py-3 text-center">-</td>}
+              {showLost && (
+                <>
+                  <td className="px-4 py-3 text-xs sm:text-sm font-bold text-center">
+                    <div className="px-2 py-1 rounded-lg bg-amber-50 text-amber-800 inline-block">
+                      {Object.values(items.items || {}).reduce((sum, item) => sum + (item.lost || 0), 0)}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-xs sm:text-sm font-bold text-center">
+                    <div className="px-2 py-1 rounded-lg bg-rose-50 text-rose-800 inline-block">
+                      {Object.values(items.items || {}).reduce((sum, item) => sum + (item.damaged || 0), 0)}
+                    </div>
+                  </td>
+                </>
+              )}
+              {outstandingBalances && !hideColumns && <td className="px-4 py-3 text-center">-</td>}
+              {!hideColumns && (
+                <>
+                  <td className="px-4 py-3 text-xs sm:text-sm font-bold text-center">
+                    <div className="px-2 py-1 rounded-lg bg-orange-50 text-orange-800 inline-block">
+                      {Object.values(items.items || {}).reduce((sum, item) => sum + (item.borrowed || 0), 0)}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3"></td>
+                </>
+              )}
+            </tr>
+          </tfoot>
         </table>
       </div>
 
@@ -769,7 +1022,7 @@ const ItemsTable: React.FC<ItemsTableProps> = ({
                     </th>
                     {isExtraPortionVisible && (
                       <th className="px-1 py-1.5 text-xs sm:text-sm font-semibold text-center text-blue-700 border-r border-gray-200 min-w-[68px] sm:min-w-[76px]">
-                        {language === 'gu' ? 'વધારાનું' : (t('extraPortion') || 'Extra')}
+                        {language === 'gu' ? 'વધારાનું' : (t('extra') || 'Extra')}
                       </th>
                     )}
                     {showLost && (
@@ -820,7 +1073,7 @@ const ItemsTable: React.FC<ItemsTableProps> = ({
                         </td>
                       </tr>
                       )}
-                      {(!enableCategorySeparation ? !collapsedSections.shuttering : true) && plateSizes.filter(ps => (ps.category || 'shuttering') === 'shuttering').map((ps, idx) => renderMobileRow(ps, idx))}
+                      {(!enableCategorySeparation ? !collapsedSections.shuttering : true) && plateSizes.filter(ps => (ps.category || 'shuttering') === 'shuttering').filter(matchesSearch).map((ps, idx) => renderMobileRow(ps, idx))}
                     </>
                   )}
 
@@ -844,7 +1097,19 @@ const ItemsTable: React.FC<ItemsTableProps> = ({
                         </td>
                       </tr>
                       )}
-                      {(!enableCategorySeparation ? !collapsedSections.jack : true) && plateSizes.filter(ps => ps.category === 'jack').map((ps, idx) => renderMobileRow(ps, idx))}
+                      {(!enableCategorySeparation ? !collapsedSections.jack : true) && (() => {
+                        const jackSizes = plateSizes.filter(ps => ps.category === 'jack').filter(matchesSearch);
+                        if (jackSizes.length === 0 && (searchQuery.trim() || filterMode === 'entered')) {
+                          return (
+                            <tr>
+                              <td colSpan={10} className="px-2 py-6 text-center text-xs text-gray-500 bg-gray-50">
+                                <p className="font-medium">{language === 'gu' ? 'કોઈ જેક/ટેકા મળ્યા નથી' : 'No matching Jack / Teka items'}</p>
+                              </td>
+                            </tr>
+                          );
+                        }
+                        return jackSizes.map((ps, idx) => renderMobileRow(ps, idx));
+                      })()}
                     </>
                   )}
 
@@ -868,7 +1133,19 @@ const ItemsTable: React.FC<ItemsTableProps> = ({
                         </td>
                       </tr>
                       )}
-                      {(!enableCategorySeparation ? !collapsedSections.cuplock : true) && plateSizes.filter(ps => ps.category === 'cuplock').map((ps, idx) => renderMobileRow(ps, idx))}
+                      {(!enableCategorySeparation ? !collapsedSections.cuplock : true) && (() => {
+                        const cuplockSizes = plateSizes.filter(ps => ps.category === 'cuplock').filter(matchesSearch);
+                        if (cuplockSizes.length === 0 && (searchQuery.trim() || filterMode === 'entered')) {
+                          return (
+                            <tr>
+                              <td colSpan={10} className="px-2 py-6 text-center text-xs text-gray-500 bg-gray-50">
+                                <p className="font-medium">{language === 'gu' ? 'કોઈ કપલોક આઈટમ મળી નથી' : 'No matching Cuplock items'}</p>
+                              </td>
+                            </tr>
+                          );
+                        }
+                        return cuplockSizes.map((ps, idx) => renderMobileRow(ps, idx));
+                      })()}
                     </>
                   )}
 
@@ -892,7 +1169,7 @@ const ItemsTable: React.FC<ItemsTableProps> = ({
                         </td>
                       </tr>
                       )}
-                      {(!enableCategorySeparation ? !collapsedSections.other : true) && plateSizes.filter(ps => ps.category === 'other').map((ps, idx) => renderMobileRow(ps, idx))}
+                      {(!enableCategorySeparation ? !collapsedSections.other : true) && plateSizes.filter(ps => ps.category === 'other').filter(matchesSearch).map((ps, idx) => renderMobileRow(ps, idx))}
                     </>
                   )}
                   {/* Totals Summary Row */}
