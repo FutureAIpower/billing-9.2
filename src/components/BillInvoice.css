@@ -179,22 +179,7 @@
   page-break-after: always;
 }
 
-/* ── Bill preview: responsive zoom (collapses layout unlike transform:scale) ── */
+/* ── Bill preview wrapper ── */
 .bill-preview-wrapper {
-  zoom: 0.42;
-}
-@media (min-width: 480px) {
-  .bill-preview-wrapper {
-    zoom: 0.55;
-  }
-}
-@media (min-width: 640px) {
-  .bill-preview-wrapper {
-    zoom: 0.75;
-  }
-}
-@media (min-width: 768px) {
-  .bill-preview-wrapper {
-    zoom: 1;
-  }
+  width: 794px;
 }

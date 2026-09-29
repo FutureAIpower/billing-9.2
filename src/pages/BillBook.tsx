@@ -9,6 +9,7 @@ import * as periodCalculations from "../utils/billingPeriodCalculations";
 import { generateBillJPEG } from "../utils/generateBillJPEG";
 import { generateBillPDF } from "../utils/generateBillPDF";
 import BillInvoiceTemplate from "../components/BillInvoiceTemplate";
+import ZoomableBillPreview from "../components/ZoomableBillPreview";
 import { useNavigate } from "react-router-dom";
 import BillCard, { BillRecord } from "../components/BillCard";
 import { usePlateSizes } from "../hooks/usePlateSizes";
@@ -936,10 +937,10 @@ ${businessInfo.name}`;
 
       {/* View Bill Modal */}
       {showModal && selectedBill && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-5xl h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-medium text-gray-900 truncate pr-2">
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[92vh] max-h-[92vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between p-3 sm:p-4 border-b bg-white shrink-0">
+              <h3 className="text-base sm:text-lg font-medium text-gray-900 truncate pr-2">
                 {t("viewBill")}: {selectedBill.billDetails.billNumber}
               </h3>
               <div className="flex gap-2 shrink-0">
@@ -985,13 +986,9 @@ ${businessInfo.name}`;
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-auto p-2 sm:p-4 bg-gray-100">
-              <div className="overflow-x-auto">
-                <div className="min-w-[794px] bg-white shadow-sm sm:shadow-none mx-auto">
-                  <BillInvoiceTemplate {...selectedBill} />
-                </div>
-              </div>
-            </div>
+            <ZoomableBillPreview defaultZoomMode="fit">
+              <BillInvoiceTemplate {...selectedBill} />
+            </ZoomableBillPreview>
           </div>
         </div>
       )}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Download } from 'lucide-react';
+import { X, Download, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
 import { format } from 'date-fns';
@@ -74,6 +74,16 @@ const ChallanEditModal: React.FC<ChallanEditModalProps> = ({
     return t('itemsDetails');
   };
   const [loading, setLoading] = useState(false);
+  const [itemSearch, setItemSearch] = useState('');
+
+  const displayedPlateSizes = React.useMemo(() => {
+    if (!itemSearch.trim()) return plateSizes;
+    const query = itemSearch.toLowerCase().replace(/[૦-૯]/g, d => String(['૦','૧','૨','૩','૪','૫','૬','૭','૮','૯'].indexOf(d))).replace(/[*×]/g, 'x').trim();
+    return plateSizes.filter(ps => {
+      const name = (ps.name || '').toLowerCase().replace(/[૦-૯]/g, d => String(['૦','૧','૨','૩','૪','૫','૬','૭','૮','૯'].indexOf(d))).replace(/[*×]/g, 'x');
+      return name.includes(query) || name.replace(/\s+/g, '').includes(query.replace(/\s+/g, ''));
+    });
+  }, [plateSizes, itemSearch]);
   const [date, setDate] = useState('');
   const [driverName, setDriverName] = useState('');
   const [driverMobile, setDriverMobile] = useState('');
@@ -599,19 +609,40 @@ const ChallanEditModal: React.FC<ChallanEditModalProps> = ({
           </div>
 
           <div className="p-4 bg-white border border-gray-200 rounded-lg">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
               <h3 className="text-lg font-semibold text-gray-900">{getCategoryHeading()}</h3>
-              {hasJackIronRows && (
-                <button
-                  type="button"
-                  onClick={() => setShowExtraPortion(!showExtraPortion)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-blue-600 transition-colors rounded-lg bg-blue-50 hover:bg-blue-100 touch-manipulation active:scale-95 border border-blue-100"
-                  title={language === 'gu' ? 'વધારે (ઈનર/આઉટર)' : 'Extra (Inner/Outer)'}
-                >
-                  {!showExtraPortion ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  <span>{language === 'gu' ? 'વધારે (ઈનર/આઉટર)' : 'Extra (Inner/Outer)'}</span>
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="absolute text-gray-400 transform -translate-y-1/2 left-2.5 top-1/2 w-4 h-4 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={itemSearch}
+                    onChange={(e) => setItemSearch(e.target.value)}
+                    placeholder={language === 'gu' ? 'આઈટમ શોધો...' : 'Search items...'}
+                    className="w-full pl-8 pr-7 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  {itemSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setItemSearch('')}
+                      className="absolute transform -translate-y-1/2 right-2 top-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                {hasJackIronRows && (
+                  <button
+                    type="button"
+                    onClick={() => setShowExtraPortion(!showExtraPortion)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-blue-600 transition-colors rounded-lg bg-blue-50 hover:bg-blue-100 touch-manipulation active:scale-95 border border-blue-100 shrink-0"
+                    title={language === 'gu' ? 'વધારે (ઈનર/આઉટર)' : 'Extra (Inner/Outer)'}
+                  >
+                    {!showExtraPortion ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    <span>{language === 'gu' ? 'વધારે' : 'Extra'}</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Desktop Table */}
@@ -649,7 +680,7 @@ const ChallanEditModal: React.FC<ChallanEditModalProps> = ({
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {plateSizes.map((ps) => (
+                  {displayedPlateSizes.map((ps) => (
                     <tr key={ps.id} className="hover:bg-gray-50">
                       <td className="px-4 py-2 text-sm font-medium text-gray-900 whitespace-nowrap">
                         {ps.name}
@@ -660,8 +691,9 @@ const ChallanEditModal: React.FC<ChallanEditModalProps> = ({
                           min="0"
                           inputMode="numeric"
                           value={(items as FormItems)[`size_${ps.id}_qty` as keyof FormItems] ?? ''}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) => handleItemChange(ps.id, 'qty', e.target.value)}
-                          className="w-24 px-3 py-2.5 text-sm text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[44px]"
+                          className="w-24 px-3 py-2.5 text-sm text-center font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[44px]"
                         />
                       </td>
                       {hasJackIronRows && showExtraPortion && (
@@ -792,7 +824,7 @@ const ChallanEditModal: React.FC<ChallanEditModalProps> = ({
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {plateSizes.map((ps, index) => (
+                        {displayedPlateSizes.map((ps, index) => (
                           <tr
                             key={ps.id}
                             className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
@@ -806,8 +838,9 @@ const ChallanEditModal: React.FC<ChallanEditModalProps> = ({
                                 min="0"
                                 inputMode="numeric"
                                 value={(items as FormItems)[`size_${ps.id}_qty` as keyof FormItems] ?? ''}
+                                onFocus={(e) => e.target.select()}
                                 onChange={(e) => handleItemChange(ps.id, 'qty', e.target.value)}
-                                className="w-full px-2 py-2 text-[13px] sm:text-sm text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[40px] sm:min-h-[44px] touch-manipulation active:scale-[0.97]"
+                                className="w-full px-2 py-2 text-[16px] sm:text-sm text-center font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[42px] sm:min-h-[44px] touch-manipulation active:scale-[0.97]"
                               />
                             </td>
                             {hasJackIronRows && showExtraPortion && (

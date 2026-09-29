@@ -589,6 +589,9 @@ const ChallanDetailsStep: React.FC<ChallanDetailsStepProps> = ({
             stockData={stockData}
             showAvailable={false}
             showLost={showLostAndDamaged}
+            enableItemSearch={true}
+            defaultFilterMode="outstanding"
+            hideEnteredFilter={true}
           />
         </div>
 

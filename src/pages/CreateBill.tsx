@@ -5,6 +5,7 @@ import { formatLocalDate, safeParseLocalDate } from "../utils/dateUtils";
 import { generateBillJPEG } from '../utils/generateBillJPEG';
 import { generateBillPDF } from '../utils/generateBillPDF';
 import BillInvoiceTemplate from '../components/BillInvoiceTemplate';
+import ZoomableBillPreview from '../components/ZoomableBillPreview';
 import {
   ArrowLeft,
   Calendar,
@@ -2458,23 +2459,21 @@ export default function CreateBill() {
 
       {/* Preview Modal */}
       {showPreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-lg shadow-xl flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-semibold">બિલ પ્રિવ્યુ</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-5xl h-[92vh] max-h-[92vh] bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b bg-white shrink-0">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900">બિલ પ્રિવ્યુ</h3>
               <button
                 onClick={() => setShowPreview(false)}
-                className="p-1 text-gray-500 hover:text-gray-700"
+                className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <X className="w-6 h-6" />
+                <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-2 overflow-y-auto bg-gray-100 flex-1 flex justify-center">
-              <div className="bill-preview-wrapper bg-white shadow-lg shrink-0 w-[794px]">
-                <BillInvoiceTemplate {...invoiceProps} />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 p-4 border-t bg-gray-50">
+            <ZoomableBillPreview defaultZoomMode="fit">
+              <BillInvoiceTemplate {...invoiceProps} />
+            </ZoomableBillPreview>
+            <div className="flex justify-end gap-2 sm:gap-3 p-3 sm:p-4 border-t bg-gray-50 shrink-0">
               <button
                 onClick={() => setShowPreview(false)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
